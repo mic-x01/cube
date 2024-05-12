@@ -20,6 +20,22 @@ type Worker struct {
 	Stats     *Stats
 }
 
+func (w *Worker) RunTasks() {
+	for {
+		if w.Queue.Len() != 0 {
+			result := w.runTask()
+			if result.Error != nil {
+				log.Printf("Error running task: %v\n", result.Error)
+			}
+		} else {
+			log.Printf("No tasks to process currently.\n")
+		}
+		log.Println("Sleeping for 10 seconds.")
+		time.Sleep(10 * time.Second)
+	}
+
+}
+
 func (w *Worker) CollectStats() {
 	for {
 		log.Println("Collecting stats")
@@ -29,7 +45,7 @@ func (w *Worker) CollectStats() {
 	}
 }
 
-func (w *Worker) RunTask() task.DockerResult {
+func (w *Worker) runTask() task.DockerResult {
 	t := w.Queue.Dequeue()
 	if t == nil {
 		log.Println("No tasks in the queue")
