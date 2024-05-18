@@ -3,9 +3,9 @@ package task
 var stateTransitionMap = map[State][]State{
 	Pending:   {Scheduled},
 	Scheduled: {Scheduled, Running, Failed},
-	Running:   {Running, Completed, Failed},
+	Running:   {Running, Completed, Failed, Scheduled},
 	Completed: {},
-	Failed:    {},
+	Failed:    {Scheduled},
 }
 
 func Contains(states []State, state State) bool {

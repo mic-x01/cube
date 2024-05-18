@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -36,10 +37,13 @@ type Task struct {
 	Memory        int64
 	Disk          int64
 	ExposedPorts  nat.PortSet
+	HostPorts     nat.PortMap
 	PortBindings  map[string]string
 	RestartPolicy string
 	StartTime     time.Time
 	FinishTime    time.Time
+	HealthCheck   string
+	RestartCount  int
 }
 
 type TaskEvent struct {
@@ -76,6 +80,11 @@ type DockerResult struct {
 	Result      string
 }
 
+type DockerInspectResponse struct {
+	Error     error
+	Container *types.ContainerJSON
+}
+
 func NewConfig(t *Task) Config {
 	return Config{
 		Name:          t.Name,
@@ -88,11 +97,11 @@ func NewConfig(t *Task) Config {
 	}
 }
 
-func NewDocker(c Config) Docker {
+func NewDocker(c *Config) *Docker {
 	dc, _ := client.NewClientWithOpts(client.FromEnv)
-	d := Docker{
+	d := &Docker{
 		Client: dc,
-		Config: c,
+		Config: *c,
 	}
 
 	return d
@@ -154,6 +163,18 @@ func (d *Docker) Run() DockerResult {
 
 	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 	return DockerResult{ContainerId: resp.ID, Action: "start", Result: "success"}
+}
+
+func (d *Docker) Inspect(containerID string) DockerInspectResponse {
+	dc, _ := client.NewClientWithOpts(client.FromEnv)
+	ctx := context.Background()
+	resp, err := dc.ContainerInspect(ctx, containerID)
+	if err != nil {
+		log.Printf("Error inspecting container: %s\n", err)
+		return DockerInspectResponse{Error: err}
+	}
+
+	return DockerInspectResponse{Container: &resp}
 }
 
 func (d *Docker) Stop(id string) DockerResult {

@@ -36,6 +36,16 @@ func (w *Worker) RunTasks() {
 
 }
 
+func (w *Worker) UpdateTasks() {
+	for {
+		log.Println("Checking status of tasks")
+		w.updateTasks()
+		log.Println("Task updates completed")
+		log.Println("Sleeping for 15 seconds")
+		time.Sleep(15 * time.Second)
+	}
+}
+
 func (w *Worker) CollectStats() {
 	for {
 		log.Println("Collecting stats")
@@ -43,6 +53,12 @@ func (w *Worker) CollectStats() {
 		w.Stats.TaskCount = w.TaskCount
 		time.Sleep(15 * time.Second)
 	}
+}
+
+func (w *Worker) InspectTask(t task.Task) task.DockerInspectResponse {
+	config := task.NewConfig(&t)
+	d := task.NewDocker(&config)
+	return d.Inspect(t.ContainerID)
 }
 
 func (w *Worker) runTask() task.DockerResult {
@@ -53,6 +69,7 @@ func (w *Worker) runTask() task.DockerResult {
 	}
 
 	taskQueued := t.(task.Task)
+	fmt.Printf("Found task in queue: %v:\n", taskQueued)
 
 	taskPersisted := w.Db[taskQueued.ID]
 	if taskPersisted == nil {
@@ -60,20 +77,52 @@ func (w *Worker) runTask() task.DockerResult {
 		w.Db[taskQueued.ID] = &taskQueued
 	}
 
-	if task.ValidStateTransition(
-		taskPersisted.State, taskQueued.State) != true {
-		err := fmt.Errorf("Invalid transition from %v to %v",
-			taskPersisted.State, taskQueued.State)
-		return task.DockerResult{Error: err}
+	var result task.DockerResult
+	if task.ValidStateTransition(taskPersisted.State, taskQueued.State) {
+		switch taskQueued.State {
+		case task.Scheduled:
+			if taskQueued.ContainerID != "" {
+				result = w.StopTask(taskQueued)
+				if result.Error != nil {
+					log.Printf("%v\n", result.Error)
+				}
+			}
+			result = w.StartTask(taskQueued)
+		case task.Completed:
+			result = w.StopTask(taskQueued)
+		default:
+			fmt.Printf("This is a mistake. taskPersisted: %v, taskQueued: %v\n", taskPersisted, taskQueued)
+			result.Error = errors.New("We should not get here")
+		}
+	} else {
+		err := fmt.Errorf("Invalid transition from %v to %v", taskPersisted.State, taskQueued.State)
+		result.Error = err
+		return result
 	}
+	return result
+}
 
-	switch taskQueued.State {
-	case task.Scheduled:
-		return w.StartTask(taskQueued)
-	case task.Completed:
-		return w.StopTask(taskQueued)
-	default:
-		return task.DockerResult{Error: errors.New("We should not get here")}
+func (w *Worker) updateTasks() {
+	for id, t := range w.Db {
+		if t.State == task.Running {
+			resp := w.InspectTask(*t)
+			if resp.Error != nil {
+				fmt.Printf("ERROR: %v\n", resp.Error)
+			}
+
+			if resp.Container == nil {
+				log.Printf("No container for running task %s\n", id)
+				w.Db[id].State = task.Failed
+			}
+
+			if resp.Container.State.Status == "exited" {
+				log.Printf("Container for task %s in non-running state %s",
+					id, resp.Container.State.Status)
+				w.Db[id].State = task.Failed
+			}
+
+			w.Db[id].HostPorts = resp.Container.NetworkSettings.NetworkSettingsBase.Ports
+		}
 	}
 }
 
@@ -93,7 +142,7 @@ func (w Worker) GetTasks() []*task.Task {
 func (w *Worker) StartTask(t task.Task) task.DockerResult {
 	t.StartTime = time.Now().UTC()
 	config := task.NewConfig(&t)
-	d := task.NewDocker(config)
+	d := task.NewDocker(&config)
 	result := d.Run()
 	if result.Error != nil {
 		log.Printf("Err running task %v: %v\n", t.ID, result.Error)
@@ -111,7 +160,7 @@ func (w *Worker) StartTask(t task.Task) task.DockerResult {
 
 func (w *Worker) StopTask(t task.Task) task.DockerResult {
 	config := task.NewConfig(&t)
-	d := task.NewDocker(config)
+	d := task.NewDocker(&config)
 
 	result := d.Stop(t.ContainerID)
 	if result.Error != nil {
