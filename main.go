@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
@@ -54,6 +55,8 @@ func main() {
 	go w3.UpdateTasks()
 	go wapi3.Start()
 
+	time.Sleep(10 * time.Second)
+
 	fmt.Println("Starting Cube manager")
 
 	workers := []string{
@@ -61,7 +64,7 @@ func main() {
 		fmt.Sprintf("%s:%d", whost, wport+1),
 		fmt.Sprintf("%s:%d", whost, wport+2),
 	}
-	m := manager.New(workers, "roundrobin")
+	m := manager.New(workers, "epvm")
 	mapi := manager.Api{Address: mhost, Port: mport, Manager: m}
 
 	go m.ProcessTasks()

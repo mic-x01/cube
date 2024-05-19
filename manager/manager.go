@@ -41,7 +41,7 @@ func New(workers []string, schedulerType string) *Manager {
 	for worker := range workers {
 		workerTaskMap[workers[worker]] = []uuid.UUID{}
 
-		nAPI := fmt.Sprintf("https://%v", workers[worker])
+		nAPI := fmt.Sprintf("http://%v", workers[worker])
 		n := node.NewNode(workers[worker], nAPI, "worker")
 		nodes = append(nodes, n)
 	}
@@ -50,6 +50,8 @@ func New(workers []string, schedulerType string) *Manager {
 	switch schedulerType {
 	case "roundrobin":
 		s = &scheduler.RoundRobin{Name: "roundrobin"}
+	case "epvm":
+		s = &scheduler.Epvm{Name: "epvm"}
 	default:
 		s = &scheduler.RoundRobin{Name: "roundrobin"}
 	}
