@@ -1,5 +1,19 @@
 package task
 
+type State int
+
+const (
+	Pending State = iota
+	Scheduled
+	Running
+	Completed
+	Failed
+)
+
+func (s State) String() []string {
+	return []string{"Pending", "Scheduled", "Running", "Completed", "Failed"}
+}
+
 var stateTransitionMap = map[State][]State{
 	Pending:   {Scheduled},
 	Scheduled: {Scheduled, Running, Failed},
